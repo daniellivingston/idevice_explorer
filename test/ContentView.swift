@@ -6,7 +6,20 @@
 //
 
 import SwiftUI
-import CoreData
+
+struct FormRowView: View {
+    let label: String
+    let field: String
+    
+    var body: some View {
+        HStack {
+            Text(label)
+            Spacer()
+            Text(field)
+                .font(.headline)
+        }
+    }
+}
 
 struct FileSystemAttributes {
     let path: String
@@ -67,6 +80,10 @@ struct FileSystemAttributes {
 struct FileSystemView: View {
     let fileSystem: FileSystemAttributes
     
+    static var defaultView: some View {
+        FileSystemView(fileSystem: FileSystemAttributes(path: "/"))
+    }
+    
     var body: some View {
         Form {
             Section(header: Text("Path")) {
@@ -74,25 +91,15 @@ struct FileSystemView: View {
             }
             
             Section(header: Text("Usage")) {
-                Text("Total Size").font(.headline)
-                Text("\(fileSystem.getTotalDiskSpace())")
-                
-                Text("Free Size").font(.headline)
-                Text("\(fileSystem.getFreeDiskSpace())")
-                
-                Text("Used Size").font(.headline)
-                Text("\(fileSystem.getUsedDiskSpace())")
+                FormRowView(label: "Total Size", field: fileSystem.getTotalDiskSpace())
+                FormRowView(label: "Free Size", field: fileSystem.getFreeDiskSpace())
+                FormRowView(label: "Used Size", field: fileSystem.getUsedDiskSpace())
             }
             
             Section(header: Text("Attributes")) {
-                Text("Index Node (inode)").font(.headline)
-                Text("\(fileSystem.inode)")
-                
-                Text("Nodes").font(.headline)
-                Text("\(fileSystem.nodes)")
-                
-                Text("Free Nodes").font(.headline)
-                Text("\(fileSystem.freeNodes)")
+                FormRowView(label: "Index Node (inode)", field: fileSystem.inode.formatted())
+                FormRowView(label: "Nodes", field: fileSystem.nodes.formatted())
+                FormRowView(label: "Free Nodes", field: fileSystem.freeNodes.formatted())
             }
             
             Section(header: Text("Debug Data")) {
@@ -103,30 +110,134 @@ struct FileSystemView: View {
     }
 }
 
-struct SystemPath: Identifiable {
-    let id = UUID()
+struct DeviceInfoView: View {
+    let device: UIDevice = UIDevice.current
     
-    let name: String
-    let path: String
+    var body: some View {
+        Form {
+            Section(header: Text("Info")) {
+                FormRowView(label: "Name", field: device.name)
+                FormRowView(label: "System Version", field: device.systemVersion)
+                FormRowView(label: "Model", field: device.model)
+            }
+            
+            Section(header: Text("Additional")) {
+                FormRowView(
+                    label: "Multitasking Support?",
+                    field: device.isMultitaskingSupported ? "Yes" : "No")
+                
+                FormRowView(label: "Orientation", field: deviceOrientationState())
+                FormRowView(label: "Battery Level", field: deviceBatteryLevel())
+                FormRowView(label: "Proximity Sensor Active?", field: proximitySensorState())
+            }
+        }
+    }
     
-    static func collect() -> [SystemPath] {
-        return [
-            SystemPath(name: "/", path: "/"),
-            SystemPath(name: "NSHomeDirectory", path: NSHomeDirectory()),
-            SystemPath(name: "NSTemporaryDirectory", path: NSTemporaryDirectory())
-        ]
+    func deviceBatteryLevel() -> String {
+        device.isBatteryMonitoringEnabled = true
+        
+        let batteryState: String = {
+            var state: String
+            
+            switch device.batteryState {
+                case UIDevice.BatteryState.charging:
+                    state = "Charging"
+                    break
+                case UIDevice.BatteryState.full:
+                    state = "Full"
+                    break
+                case UIDevice.BatteryState.unplugged:
+                    state = "Unplugged"
+                    break
+                default:
+                    state = "Unknown"
+                    break
+            }
+            
+            if device.batteryLevel > 0.0 {
+                return "\(device.batteryLevel.formatted()) (\(state))"
+            }
+            return "Unavailable"
+        }()
+        
+        device.isBatteryMonitoringEnabled = false
+        
+        return batteryState
+    }
+    
+    func proximitySensorState() -> String {
+        device.isProximityMonitoringEnabled = true
+        let proximityState = device.proximityState ? "Enabled" : "Disabled"
+        device.isProximityMonitoringEnabled = false
+        
+        return proximityState
+    }
+    
+    func deviceOrientationState() -> String {
+        var orientationString: String = ""
+        
+        switch device.orientation {
+            case UIDeviceOrientation.portrait:
+                orientationString = "Portrait"
+                break
+            case UIDeviceOrientation.portraitUpsideDown:
+                orientationString = "Portrait (upside-down)"
+                break
+            case UIDeviceOrientation.landscapeLeft:
+                orientationString = "Landscape (left)"
+                break
+            case UIDeviceOrientation.landscapeRight:
+                orientationString = "Landscape (right)"
+                break
+            case UIDeviceOrientation.faceDown:
+                orientationString = "Face down"
+                break
+            case UIDeviceOrientation.faceUp:
+                orientationString = "Face up"
+                break
+            default:
+                orientationString = "Unknown"
+                break
+        }
+        
+        return orientationString
     }
 }
 
+struct DiagnosticsView: View {
+    @State var text = "Hello"
+    
+    var body: some View {
+        Form {
+            Section(header: Text("Device Functions")) {
+                Button("Play Input Click") {
+                    UIDevice.current.playInputClick()
+                }
+            }
+        }
+    }
+}
+
+struct ViewInfo: Identifiable {
+    let id = UUID()
+    
+    let name: String
+    let view: AnyView
+}
+
 struct ContentView: View {
+    let views = [
+        ViewInfo(name: "Device Information", view: AnyView(DeviceInfoView())),
+        ViewInfo(name: "Disk Information", view: AnyView(FileSystemView.defaultView)),
+        ViewInfo(name: "Diagnostic Functions", view: AnyView(DiagnosticsView()))
+    ]
+    
     var body: some View {
         NavigationStack {
-            List(SystemPath.collect()) { path in
-                NavigationLink(path.name) {
-                    FileSystemView(
-                        fileSystem: FileSystemAttributes(path: path.path)
-                    )
-                    .navigationTitle("Attributes: \(path.name)")
+            List(views) { view in
+                NavigationLink(view.name) {
+                    view.view
+                        .navigationTitle("\(view.name)")
                 }
             }
             .navigationTitle("iOS Device Monitor")
